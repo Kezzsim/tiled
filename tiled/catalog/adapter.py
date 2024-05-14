@@ -1,5 +1,4 @@
 import collections
-import functools
 import importlib
 import itertools as it
 import logging
@@ -15,21 +14,7 @@ from urllib.parse import quote_plus, urlparse
 
 import anyio
 from fastapi import HTTPException
-from sqlalchemy import (
-    JSON,
-    Column,
-    Integer,
-    Table,
-    delete,
-    event,
-    func,
-    not_,
-    or_,
-    select,
-    text,
-    type_coerce,
-    update,
-)
+from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -380,9 +365,8 @@ class CatalogNodeAdapter:
         if (self.context.engine.dialect.name == "sqlite") and any(
             isinstance(condition.type, MatchType) for condition in self.conditions
         ):
-            metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
             statement = statement.join(
-                metadata_fts5, metadata_fts5.c.rowid == orm.Node.id
+                orm.metadata_fts5, orm.metadata_fts5.c.rowid == orm.Node.id
             )
         for condition in self.conditions:
             statement = statement.filter(condition)
@@ -1197,8 +1181,7 @@ def contains(query, tree):
 def full_text(query, tree):
     dialect_name = tree.engine.url.get_dialect().name
     if dialect_name == "sqlite":
-        metadata_fts5 = _sqlite_fts5_virtual_table(orm.Node.metadata)
-        condition = metadata_fts5.c.metadata.match(query.text)
+        condition = orm.metadata_fts5.c.metadata.match(query.text)
     elif dialect_name == "postgresql":
         tsvector = func.jsonb_to_tsvector(
             cast("simple", REGCONFIG), orm.Node.metadata_, cast(["string"], JSONB)
@@ -1446,13 +1429,3 @@ STRUCTURES = {
     StructureFamily.sparse: CatalogSparseAdapter,
     StructureFamily.table: CatalogTableAdapter,
 }
-
-
-@functools.lru_cache(1)
-def _sqlite_fts5_virtual_table(sqlalchemy_metadata):
-    return Table(
-        "metadata_fts5",
-        sqlalchemy_metadata,
-        Column("rowid", Integer, primary_key=True),
-        Column("metadata", JSON),
-    )
