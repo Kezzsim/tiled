@@ -16,9 +16,11 @@ import anyio
 from fastapi import HTTPException
 from sqlalchemy import delete, event, func, not_, or_, select, text, type_coerce, update
 from sqlalchemy.dialects.postgresql import JSONB, REGCONFIG
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 from sqlalchemy.sql.expression import cast
 from starlette.status import HTTP_404_NOT_FOUND, HTTP_415_UNSUPPORTED_MEDIA_TYPE
 
@@ -561,14 +563,8 @@ class CatalogNodeAdapter:
 
         return data
 
-    async def create_node(
-        self,
-        structure_family,
-        metadata,
-        key=None,
-        specs=None,
-        data_sources=None,
-    ):
+    @property
+    def insert(self):
         # The only way to do "insert if does not exist" i.e. ON CONFLICT
         # is to invoke dialect-specific insert.
         if self.context.engine.dialect.name == "sqlite":
@@ -578,6 +574,16 @@ class CatalogNodeAdapter:
         else:
             assert False  # future-proofing
 
+        return insert
+
+    async def create_node(
+        self,
+        structure_family,
+        metadata,
+        key=None,
+        specs=None,
+        data_sources=None,
+    ):
         key = key or self.context.key_maker()
         data_sources = data_sources or []
 
@@ -636,6 +642,7 @@ class CatalogNodeAdapter:
                                 "is not one that the Tiled server knows how to read."
                             ),
                         )
+
                 if data_source.structure is None:
                     structure_id = None
                 else:
@@ -646,7 +653,7 @@ class CatalogNodeAdapter:
                     )
                     structure_id = compute_structure_id(structure)
                     statement = (
-                        insert(orm.Structure).values(
+                        self.insert(orm.Structure).values(
                             id=structure_id,
                             structure=structure,
                         )
@@ -663,20 +670,7 @@ class CatalogNodeAdapter:
                 node.data_sources.append(data_source_orm)
                 await db.flush()  # Get data_source_orm.id.
                 for asset in data_source.assets:
-                    # Find an asset_id if it exists, otherwise create a new one
-                    statement = select(orm.Asset.id).where(
-                        orm.Asset.data_uri == asset.data_uri
-                    )
-                    result = await db.execute(statement)
-                    if row := result.fetchone():
-                        (asset_id,) = row
-                    else:
-                        statement = insert(orm.Asset).values(
-                            data_uri=asset.data_uri,
-                            is_directory=asset.is_directory,
-                        )
-                        result = await db.execute(statement)
-                        (asset_id,) = result.inserted_primary_key
+                    asset_id = await self._put_asset(db, asset)
                     assoc_orm = orm.DataSourceAssetAssociation(
                         asset_id=asset_id,
                         data_source_id=data_source_orm.id,
@@ -701,6 +695,22 @@ class CatalogNodeAdapter:
                 self.context, refreshed_node, access_policy=self.access_policy
             )
 
+    async def _put_asset(self, db, asset):
+        # Find an asset_id if it exists, otherwise create a new one
+        statement = select(orm.Asset.id).where(orm.Asset.data_uri == asset.data_uri)
+        result = await db.execute(statement)
+        if row := result.fetchone():
+            (asset_id,) = row
+        else:
+            statement = self.insert(orm.Asset).values(
+                data_uri=asset.data_uri,
+                is_directory=asset.is_directory,
+            )
+            result = await db.execute(statement)
+            (asset_id,) = result.inserted_primary_key
+
+        return asset_id
+
     async def put_data_source(self, data_source):
         # Obtain and hash the canonical (RFC 8785) representation of
         # the JSON structure.
@@ -708,16 +718,8 @@ class CatalogNodeAdapter:
             data_source.structure_family, data_source.structure
         )
         structure_id = compute_structure_id(structure)
-        # The only way to do "insert if does not exist" i.e. ON CONFLICT
-        # is to invoke dialect-specific insert.
-        if self.context.engine.dialect.name == "sqlite":
-            from sqlalchemy.dialects.sqlite import insert
-        elif self.context.engine.dialect.name == "postgresql":
-            from sqlalchemy.dialects.postgresql import insert
-        else:
-            assert False  # future-proofing
         statement = (
-            insert(orm.Structure).values(
+            self.insert(orm.Structure).values(
                 id=structure_id,
                 structure=structure,
             )
@@ -741,6 +743,23 @@ class CatalogNodeAdapter:
                     status_code=404,
                     detail=f"No data_source {data_source.id} on this node.",
                 )
+            # Add assets and associate them with the data_source
+            for asset in data_source.assets:
+                asset_id = await self._put_asset(db, asset)
+                statement = select(orm.DataSourceAssetAssociation).where(
+                    (orm.DataSourceAssetAssociation.data_source_id == data_source.id)
+                    & (orm.DataSourceAssetAssociation.asset_id == asset_id)
+                )
+                result = await db.execute(statement)
+                if not result.fetchone():
+                    assoc_orm = orm.DataSourceAssetAssociation(
+                        asset_id=asset_id,
+                        data_source_id=data_source.id,
+                        parameter=asset.parameter,
+                        num=asset.num,
+                    )
+                    db.add(assoc_orm)
+
             await db.commit()
 
     # async def patch_node(datasources=None):
@@ -1302,7 +1321,19 @@ def from_uri(
         # Interpret URI as filepath.
         uri = f"sqlite+aiosqlite:///{uri}"
 
-    engine = create_async_engine(uri, echo=echo, json_serializer=json_serializer)
+    parsed_url = make_url(uri)
+    if (parsed_url.get_dialect().name == "sqlite") and (
+        parsed_url.database != ":memory:"
+    ):
+        # For file-backed SQLite databases, connection pooling offers a
+        # significant performance boost. For SQLite databases that exist
+        # only in process memory, pooling is not applicable.
+        poolclass = AsyncAdaptedQueuePool
+    else:
+        poolclass = None  # defer to sqlalchemy default
+    engine = create_async_engine(
+        uri, echo=echo, json_serializer=json_serializer, poolclass=poolclass
+    )
     if engine.dialect.name == "sqlite":
         event.listens_for(engine.sync_engine, "connect")(_set_sqlite_pragma)
     return CatalogContainerAdapter(

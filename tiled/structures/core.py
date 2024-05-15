@@ -5,8 +5,11 @@ the server and the client.
 """
 
 import enum
+import importlib
 from dataclasses import asdict, dataclass
 from typing import Dict, Optional
+
+from ..utils import OneShotCachedMap
 
 
 class StructureFamily(str, enum.Enum):
@@ -22,7 +25,7 @@ class Spec:
     name: str
     version: Optional[str] = None
 
-    def __init__(self, name, version=None):
+    def __init__(self, name, version=None) -> None:
         # Enable the name to be passed as a position argument.
         # The setattr stuff is necessary to make this work with a frozen dataclass.
         object.__setattr__(self, "name", name)
@@ -41,3 +44,21 @@ class Spec:
         return asdict(self)
 
     model_dump = dict  # For easy interoperability with pydantic 2.x models
+
+
+STRUCTURE_TYPES = OneShotCachedMap(
+    {
+        StructureFamily.array: lambda: importlib.import_module(
+            "...structures.array", StructureFamily.__module__
+        ).ArrayStructure,
+        StructureFamily.awkward: lambda: importlib.import_module(
+            "...structures.awkward", StructureFamily.__module__
+        ).AwkwardStructure,
+        StructureFamily.table: lambda: importlib.import_module(
+            "...structures.table", StructureFamily.__module__
+        ).TableStructure,
+        StructureFamily.sparse: lambda: importlib.import_module(
+            "...structures.sparse", StructureFamily.__module__
+        ).SparseStructure,
+    }
+)

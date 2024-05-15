@@ -3,10 +3,57 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Next
+## Unreleased
 
 ### Added
 
+- The `tiled serve ...` CLI commands now accept a `--log-config` option,
+  pointing to a custom uvicorn logging configuration file. An example
+  file was added to the repository root, `example_log_config.yml`.
+- Added `tiled.adapters.protocols` which will provide possibility for user to
+  implement their custom adapters in a way that satisfies mypy.
+- Added `tiled.client.smoke` with a utility for walking a node and ensuring
+  that the data in it can be read.
+- Added `tiled.client.sync` with a utility for copying nodes between two
+  Tiled instances.
+
+### Changed
+
+- SQLite-backed catalogs now employ connection pooling. This results in a
+  significant speed-up and avoids frequently re-opening the SQLite file.
+- Metadata returned from the use of the `select_metadata` is now a one-item
+  dictionary with 'selected' as the key, to match default type/behavior.
+- The method `BaseClient.data_sources()` returns dataclass objects instead of
+  raw dict objects.
+- `tiled.client.sync` has conflict handling, with initial options of 'error'
+  (default), 'warn', and 'skip'
+
+### Fixed
+
+- Propagate setting `include_data_sources` into child nodes.
+- Populate attributes in member data variables and coordinates of xarray Datasets.
+- Update dependencies.
+
+## v0.1.0a120 (25 April 2024)
+
+### Fixed
+
+- The `content-encoding` `blosc` was recently upgraded from Blosc to Blosc2.
+  The `content-encoding` has been renamed to `blosc2` to avoid version
+  confusion between different versions of Tiled servers and clients.
+
+## v0.1.0a119 (24 April 2024)
+
+### Fixed
+
+- Metric-reporting had an error when `compress` timing was recorded but
+  `content-encoding` header was unset.
+
+## v0.1.0a118 (23 April 2024)
+
+### Added
+
+- Python 3.12 support
 - Added `tiled.adapters.resource_cache` for caching file handles between
   requests.
 
@@ -25,6 +72,16 @@ Write the date in place of the "Unreleased" in the case a new version is release
   have been a regression due to a change in SQLAlchemy defaults.)
 - Tolerate HTTP responses that are missing a `x-tiled-request-id` header, such
   as when a proxy server responds with an error.
+- Use `httpx` status code sentinels (instead of `starlette` ones) for typing
+  client-side status codes.
+
+### Changed
+
+- Removed upper bound version pin on `dask`.
+- Switched from `blosc` to `blosc2`.
+- Made client objects dask-serializable
+- Added support for registering multiple Assets with a DataSource in an update
+
 
 ### Other
 
@@ -32,7 +89,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Specify a `fallback-version`, `0.0.0`, to be used when the version-detection
   code cannot run.
 
-## v0.1.0a117
+## v0.1.0a117 (28 March 2024)
 
 ### Added
 
