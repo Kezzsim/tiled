@@ -5,9 +5,20 @@ import operator
 import sys
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
-from fastapi import APIRouter
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 from ..iterviews import ItemsView, KeysView, ValuesView
 from ..queries import (
@@ -766,6 +777,8 @@ def notin(query: Any, tree: MapAdapter) -> MapAdapter:
 
     """
     matches = {}
+    if len(query.value) == 0:
+        return tree
     for key, value, term in iter_child_metadata(query.key, tree):
         if term not in query.value:
             matches[key] = value

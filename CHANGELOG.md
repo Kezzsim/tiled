@@ -3,7 +3,14 @@ Write the date in place of the "Unreleased" in the case a new version is release
 
 # Changelog
 
-## Unreleased
+## v0.1.0a122 (23 May 2024)
+
+### Fixed
+
+- A dependency on `fastapi` was introduced in `tiled.adapters`. This has been
+  removed.
+
+## v0.1.0a121 (21 May 2024)
 
 ### Added
 
@@ -16,6 +23,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
   that the data in it can be read.
 - Added `tiled.client.sync` with a utility for copying nodes between two
   Tiled instances.
+- Show authentication state in `Context` repr.
 
 ### Changed
 
@@ -33,6 +41,7 @@ Write the date in place of the "Unreleased" in the case a new version is release
 - Propagate setting `include_data_sources` into child nodes.
 - Populate attributes in member data variables and coordinates of xarray Datasets.
 - Update dependencies.
+- Fix behavior of queries `In` and `NotIn` when passed an empty list of values.
 
 ## v0.1.0a120 (25 April 2024)
 
