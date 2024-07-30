@@ -16,6 +16,9 @@ DEFAULT_ADAPTERS_BY_MIMETYPE = OneShotCachedMap(
         "image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffAdapter,
+        "image/jpeg": lambda: importlib.import_module(
+            "..adapters.jpeg", __name__
+        ).JpegAdapter,
         "multipart/related;type=image/tiff": lambda: importlib.import_module(
             "..adapters.tiff", __name__
         ).TiffSequenceAdapter.from_uris,
