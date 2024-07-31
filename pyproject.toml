@@ -90,6 +90,7 @@ all = [
     "sqlalchemy[asyncio] >=2",
     "starlette",
     "tifffile",
+    "imagecodecs",
     "typer",
     "uvicorn[standard]",
     "watchfiles",

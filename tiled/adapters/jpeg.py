@@ -1,11 +1,12 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
-
+import imagecodecs
 from numpy._typing import NDArray
 
 from ..structures.array import ArrayStructure, BuiltinDtype
 from ..structures.core import Spec, StructureFamily
 from ..utils import path_from_uri
 from .protocols import AccessPolicy
+from .resource_cache import with_resource_cache
 from .type_alliases import JSON, NDSlice
 
 
@@ -43,6 +44,8 @@ class JpegAdapter:
         if not isinstance(data_uri, str):
             raise Exception
         filepath = path_from_uri(data_uri)
+        cache_key = (imagecodecs.JPEG2K, filepath)
+        self._file = with_resource_cache(cache_key, imagecodecs.JPEG2K, filepath)
         self.specs = specs or []
         self._provided_metadata = metadata or {}
         self.access_policy = access_policy
@@ -127,4 +130,3 @@ class JpegAdapter:
 
         """
         return self._structure
-
